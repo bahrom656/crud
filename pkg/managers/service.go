@@ -4,258 +4,346 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
-	"github.com/bahrom656/crud/cmd/app/middleware"
-	"github.com/bahrom656/crud/pkg/customers"
 	"github.com/bahrom656/crud/pkg/security"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 	"log"
+	"strconv"
 	"time"
 )
 
-//Service
+//Service ...
 type Service struct {
 	pool *pgxpool.Pool
 }
 
-//NewService
-func NewService(pool *pgxpool.Pool) *Service {
-	return &Service{pool: pool}
+//NewService ...
+func NewService(db *pgxpool.Pool) *Service {
+	return &Service{pool: db}
 }
 
+//Manager ...
 type Manager struct {
-	ID       int64     `json:"id"`
-	Name     string    `json:"name"`
-	Phone    string    `json:"phone"`
-	Password string    `json:"password"`
-	Roles    []string  `json:"roles"`
-	Active   bool      `json:"active"`
-	Created  time.Time `json:"created"`
+	ID          int64     `json:"id"`
+	Name        string    `json:"name"`
+	Salary      int64     `json:"salary"`
+	Plan        int64     `json:"plan"`
+	BossID      int64     `json:"boss_id"`
+	Departament string    `json:"departament"`
+	Phone       string    `json:"phone"`
+	Password    string    `json:"password"`
+	IsAdmin     bool      `json:"is_admin"`
+	Created     time.Time `json:"created"`
 }
 
+//Product ...
 type Product struct {
-	ID    int64  `json:"id"`
-	Name  string `json:"name"`
-	Price int64  `json:"price"`
-	Qty   int64  `json:"qty"`
+	ID      int64     `json:"id"`
+	Name    string    `json:"name"`
+	Price   int       `json:"price"`
+	Qty     int       `json:"qty"`
+	Active  bool      `json:"active"`
+	Created time.Time `json:"created"`
 }
 
-type Registration struct {
-	Name     string   `json:"name"`
-	Phone    string   `json:"phone"`
-	Password string   `json:"password"`
-	Roles    []string `json:"roles"`
+//Sale ...
+type Sale struct {
+	ID         int64           `json:"id"`
+	ManagerID  int64           `json:"manager_id"`
+	CustomerID int64           `json:"customer_id"`
+	Created    time.Time       `json:"created"`
+	Positions  []*SalePosition `json:"positions"`
 }
 
-type Auth struct {
-	Login    string `json:"login"`
-	Password string `json:"password"`
+//SalePosition ...
+type SalePosition struct {
+	ID        int64     `json:"id"`
+	ProductID int64     `json:"product_id"`
+	SaleID    int64     `json:"sale_id"`
+	Price     int       `json:"price"`
+	Qty       int       `json:"qty"`
+	Created   time.Time `json:"created"`
 }
 
-func (s *Service) Register(ctx context.Context, registration *Registration) (*Manager, error) {
-	item := &Manager{}
+//Customer ...
+type Customer struct {
+	ID      int64     `json:"id"`
+	Name    string    `json:"name"`
+	Phone   string    `json:"phone"`
+	Active  bool      `json:"active"`
+	Created time.Time `json:"created"`
+}
+
+//IDByToken ...
+func (s *Service) IDByToken(ctx context.Context, token string) (int64, error) {
 	var id int64
+	sqlStatement := `select manager_id from managers_tokens where token = $1`
 
-	idManager, err := middleware.Authentication(ctx)
-	if err != nil {
-	}
-
-	err = s.pool.QueryRow(ctx, `SELECT id FROM managers WHERE roles[0-9]='ADMIN' AND id=$1`, idManager).Scan(&id)
-	if err != nil {
-	}
-
-	hash, err := bcrypt.GenerateFromPassword([]byte(registration.Password), bcrypt.DefaultCost)
-	if err != nil {
-	}
-
-	err = s.pool.QueryRow(ctx,
-		`INSERT INTO managers(name, phone, password, roles) 
-			VALUES ($1, $2, $3, $4) ON CONFLICT (phone) 
-			DO NOTHING RETURNING id, name, phone, roles, active, created`,
-		registration.Name, registration.Phone, hash, registration.Roles,
-	).Scan(
-		&item.ID,
-		&item.Name,
-		&item.Phone,
-		&item.Roles,
-		&item.Active,
-		&item.Created,
-	)
-	if err == pgx.ErrNoRows {
-	}
-	if err != nil {
-	}
-
-	return item, nil
-}
-
-func (s *Service) AuthenticateManager(ctx context.Context, token string) (id int64, err error) {
-	expireTime := time.Now()
-
-	err = s.pool.QueryRow(
-		ctx,
-		`SELECT manager_id, expire FROM managers_tokens WHERE token = $1`,
-		token,
-	).Scan(&id, &expireTime)
-
-	if err == pgx.ErrNoRows {
-		return 0, security.ErrNoSuchUser
-	}
+	err := s.pool.QueryRow(ctx, sqlStatement, token).Scan(&id)
 
 	if err != nil {
-		return 0, security.ErrInternal
+		log.Print(err)
+		if err == pgx.ErrNoRows {
+			return 0, nil
+		}
+		return 0, nil
 	}
 
-	if time.Now().After(expireTime) {
-		return 0, security.ErrTokenExpired
-	}
 	return id, nil
 }
 
-func (s *Service) Token(ctx context.Context, phone string, password string) (token string, err error) {
-	var hash string
+//IsAdmin ...
+func (s *Service) IsAdmin(ctx context.Context, id int64) (isAdmin bool) {
+	sqlStmt := `select is_admin from managers  where id = $1`
+	err := s.pool.QueryRow(ctx, sqlStmt, id).Scan(&isAdmin)
+	if err != nil {
+		return false
+	}
+	return
+}
+
+//Create ...
+func (s *Service) Create(ctx context.Context, item *Manager) (string, error) {
+	var token string
 	var id int64
 
-	err = s.pool.QueryRow(ctx,
-		`SELECT id, password FROM managers WHERE phone=$1`, phone).Scan(&id, &hash)
-	if err == pgx.ErrNoRows {
-	}
+	sqlStmt := `insert into managers(name,phone,is_admin) values ($1,$2,$3) on conflict (phone) do nothing returning id;`
+	err := s.pool.QueryRow(ctx, sqlStmt, item.Name, item.Phone, item.IsAdmin).Scan(&id)
 	if err != nil {
-	}
-
-	err = bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	if err != nil {
+		log.Print(err)
+		return "", security.ErrInternal
 	}
 
 	buffer := make([]byte, 256)
 	n, err := rand.Read(buffer)
 	if n != len(buffer) || err != nil {
+		return "", security.ErrInternal
 	}
 
 	token = hex.EncodeToString(buffer)
-	_, err = s.pool.Exec(ctx,
-		`INSERT INTO managers_tokens(token, manager_id) VALUES ($1, $2)`, token, id)
+
+	_, err = s.pool.Exec(ctx, `insert into managers_tokens(token,manager_id) values($1,$2)`, token, id)
 	if err != nil {
+		return "", security.ErrInternal
 	}
 
 	return token, nil
-
 }
 
-func (s *Service) IDByToken(ctx context.Context, token string) (id int64, err error) {
+//Token ...
+func (s *Service) Token(ctx context.Context, phone, password string) (token string, err error) {
+	var hash string
+	var id int64
+	err = s.pool.QueryRow(ctx, `select id,password from managers where phone = $1`, phone).Scan(&id, &hash)
 
-	err = s.pool.QueryRow(ctx,
-		`SELECT manager_id FROM managerS_tokens WHERE token=$1`, token).Scan(id)
+	if err == pgx.ErrNoRows {
+		return "", security.ErrInvalidPassword
+	}
 	if err != nil {
-
+		return "", security.ErrInternal
 	}
 
-	return id, nil
+	err = bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	if err != nil {
+		return "", security.ErrInvalidPassword
+	}
+
+	buffer := make([]byte, 256)
+	n, err := rand.Read(buffer)
+	if n != len(buffer) || err != nil {
+		return "", security.ErrInternal
+	}
+
+	token = hex.EncodeToString(buffer)
+
+	_, err = s.pool.Exec(ctx, `insert into managers_tokens(token,manager_id) values($1,$2)`, token, id)
+	if err != nil {
+		return "", security.ErrInternal
+	}
+
+	return token, nil
 }
 
-func (s *Service) GetProducts(ctx context.Context) ([]*Product, error) {
+//SaveProduct ...
+func (s *Service) SaveProduct(ctx context.Context, product *Product) (*Product, error) {
+
+	var err error
+
+	if product.ID == 0 {
+		sqlstmt := `insert into products(name,qty,price) values ($1,$2,$3) returning id,name,qty,price,active,created;`
+		err = s.pool.QueryRow(ctx, sqlstmt, product.Name, product.Qty, product.Price).
+			Scan(&product.ID, &product.Name, &product.Qty, &product.Price, &product.Active, &product.Created)
+	} else {
+		sqlstmt := `update  products set  name=$1, qty=$2,price=$3  where id = $4 returning id,name,qty,price,active,created;`
+		err = s.pool.QueryRow(ctx, sqlstmt, product.Name, product.Qty, product.Price, product.ID).
+			Scan(&product.ID, &product.Name, &product.Qty, &product.Price, &product.Active, &product.Created)
+	}
+
+	if err != nil {
+		log.Print(err)
+		return nil, security.ErrInternal
+	}
+	return product, nil
+}
+
+//MakeSalePosition ...
+func (s *Service) MakeSalePosition(ctx context.Context, position *SalePosition) bool {
+	active := false
+	qty := 0
+	if err := s.pool.QueryRow(ctx, `select qty,active from products where id = $1`, position.ProductID).
+		Scan(&qty, &active); err != nil {
+		return false
+	}
+	if qty < position.Qty || !active {
+		return false
+	}
+	if _, err := s.pool.Exec(ctx, `update products set qty = $1 where id = $2`, qty-position.Qty, position.ProductID); err != nil {
+		log.Print(err)
+		return false
+	}
+	return true
+}
+
+//MakeSale ...
+func (s *Service) MakeSale(ctx context.Context, sale *Sale) (*Sale, error) {
+
+	positionsSQLstmt := "insert into sales_positions (sale_id,product_id,qty,price) values "
+
+	sqlstmt := `insert into sales(manager_id,customer_id) values ($1,$2) returning id, created;`
+
+	err := s.pool.QueryRow(ctx, sqlstmt, sale.ManagerID, sale.CustomerID).Scan(&sale.ID, &sale.Created)
+	if err != nil {
+		log.Print(err)
+		return nil, security.ErrInternal
+	}
+	for _, position := range sale.Positions {
+		if !s.MakeSalePosition(ctx, position) {
+			log.Print("Invalid position")
+			return nil, security.ErrInternal
+		}
+		positionsSQLstmt += "(" + strconv.FormatInt(sale.ID, 10) + "," + strconv.FormatInt(position.ProductID, 10) + "," + strconv.Itoa(position.Price) + "," + strconv.Itoa(position.Qty) + "),"
+	}
+
+	positionsSQLstmt = positionsSQLstmt[0 : len(positionsSQLstmt)-1]
+
+	log.Print(positionsSQLstmt)
+	_, err = s.pool.Exec(ctx, positionsSQLstmt)
+	if err != nil {
+		log.Print(err)
+		return nil, security.ErrInternal
+	}
+
+	return sale, nil
+}
+
+//GetSales ...
+func (s *Service) GetSales(ctx context.Context, id int64) (sum int, err error) {
+
+	sqlstmt := `
+	select coalesce(sum(sp.qty * sp.price),0) total
+	from managers m
+	left join sales s on s.manager_id= $1
+	left join sales_positions sp on sp.sale_id = s.id
+	group by m.id
+	limit 1`
+
+	err = s.pool.QueryRow(ctx, sqlstmt, id).Scan(&sum)
+	if err != nil {
+		log.Print(err)
+		return 0, security.ErrInternal
+	}
+	return sum, nil
+}
+
+//Products ...
+func (s *Service) Products(ctx context.Context) ([]*Product, error) {
+
 	items := make([]*Product, 0)
-	rows, err := s.pool.Query(ctx,
-		`SELECT id, name, price, qty FROM products WHERE active ORDER BY id LIMIT 500`)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return items, nil
-	}
+
+	sqlstmt := `select id, name, price, qty from products where active = true order by id limit 500`
+	rows, err := s.pool.Query(ctx, sqlstmt)
+
 	if err != nil {
+		if err == pgx.ErrNoRows {
+			return items, nil
+		}
 		return nil, security.ErrInternal
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		item := &Product{}
-		err := rows.Scan(&item.ID, &item.Name, &item.Price, &item.Qty)
+		err = rows.Scan(&item.ID, &item.Name, &item.Price, &item.Qty)
 		if err != nil {
 			log.Print(err)
 			return nil, err
 		}
 		items = append(items, item)
 	}
-	err = rows.Err()
-	if err != nil {
-		return nil, err
-	}
 
 	return items, nil
 }
 
-func (s *Service) RemoveProductsByID(ctx context.Context, id int64) (err error) {
-	_, err = s.pool.Query(ctx,
-		`DELETE FROM products WHERE id = $1`, id)
-	if err != nil {
-	}
+//RemoveProductByID ...
+func (s *Service) RemoveProductByID(ctx context.Context, id int64) (err error) {
 
+	_, err = s.pool.Exec(ctx, `delete from products where id = $1`, id)
+	if err != nil {
+		log.Print(err)
+		return security.ErrInternal
+	}
 	return nil
 }
 
+//RemoveCustomerByID ...
 func (s *Service) RemoveCustomerByID(ctx context.Context, id int64) (err error) {
-	_, err = s.pool.Query(ctx,
-		`DELETE FROM customers WHERE id = $1`, id)
-	if err != nil {
-	}
 
+	_, err = s.pool.Exec(ctx, `DELETE from customers where id = $1`, id)
+	if err != nil {
+		log.Print(err)
+		return security.ErrInternal
+	}
 	return nil
 }
 
-func (s *Service) GetCustomer(ctx context.Context) ([]*customers.Customer, error) {
-	items := make([]*customers.Customer, 0)
-	rows, err := s.pool.Query(ctx,
-		`SELECT id, name, phone, active, created FROM customers WHERE active = true ORDER BY id LIMIT 500`)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return items, nil
-	}
+//Customers ...
+func (s *Service) Customers(ctx context.Context) ([]*Customer, error) {
+
+	items := make([]*Customer, 0)
+	sqlstmt := `select id, name, phone, active, created from customers where active = true order by id limit 500`
+	rows, err := s.pool.Query(ctx, sqlstmt)
 	if err != nil {
+		if err == pgx.ErrNoRows {
+			return items, nil
+		}
 		return nil, security.ErrInternal
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		item := &customers.Customer{}
-		err := rows.Scan(&item.ID, &item.Name, &item.Phone, &item.Active, &item.Created)
+		item := &Customer{}
+		err = rows.Scan(&item.ID, &item.Name, &item.Phone, &item.Active, &item.Created)
 		if err != nil {
 			log.Print(err)
 			return nil, err
 		}
 		items = append(items, item)
 	}
-	err = rows.Err()
-	if err != nil {
-		return nil, err
-	}
 
 	return items, nil
 }
 
-func (s *Service) ManagerChangeCustomer(ctx context.Context, customer *customers.Customer) (*customers.Customer, error) {
-	item := &customers.Customer{}
+//ChangeCustomer ...
+func (s *Service) ChangeCustomer(ctx context.Context, customer *Customer) (*Customer, error) {
 
-	err := s.pool.QueryRow(ctx,
-		`UPDATE customers 
-			SET name = $1, phone = $2, active = $3 
-			WHERE id=$4 
-			RETURNING id, name, phone, active`,
-		customer.Active, customer.Name, customer.Phone, customer.ID).Scan(&item.ID, &item.Name, &item.Phone, &item.Active)
-	if err != nil {
+	sqlstmt := `update customers set name = $2, phone = $3, active = $4  where id = $1 returning name,phone,active`
+
+	if err := s.pool.QueryRow(ctx, sqlstmt, customer.ID, customer.Name, customer.Phone, customer.Active).
+		Scan(&customer.Name, &customer.Phone, &customer.Active); err != nil {
+		log.Print(err)
+		return nil, security.ErrInternal
 	}
-	return item, nil
-}
 
-func (s *Service) ManagerChangeProduct(ctx context.Context, product *Product) (*Product, error) {
-	item := &Product{}
-
-	err := s.pool.QueryRow(ctx,
-		`UPDATE products 
-			SET name = $1, price = $2, qty = $3 
-			WHERE id=$4 
-			RETURNING id, name, price, qty`,
-		product.Name, product.Price, product.Qty, product.ID).Scan(&item.ID, &item.Name, &item.Price, &item.Qty)
-	if err != nil {
-	}
-	return item, nil
-
+	return customer, nil
 }

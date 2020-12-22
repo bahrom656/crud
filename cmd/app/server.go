@@ -1,7 +1,7 @@
 package app
 
 import (
-	"context"
+	"encoding/json"
 	"github.com/bahrom656/crud/cmd/app/middleware"
 	"github.com/bahrom656/crud/pkg/customers"
 	"github.com/bahrom656/crud/pkg/managers"
@@ -51,25 +51,27 @@ func (s *Server) Init() {
 	managersSubroter.HandleFunc("/sales", s.handleManagerGetSales).Methods(GET)
 	managersSubroter.HandleFunc("/sales", s.handleManagerMakeSales).Methods(POST)
 	managersSubroter.HandleFunc("/products", s.handleManagerGetProducts).Methods(GET)
-	managersSubroter.HandleFunc("/products", s.handleManagerChangeProduct).Methods(POST)
-	managersSubroter.HandleFunc("/products/{id}", s.handleManagerRemoveProductsByID).Methods(DELETE)
-	managersSubroter.HandleFunc("/customer", s.handleManagerGetCustomer).Methods(GET)
+	managersSubroter.HandleFunc("/products", s.handleManagerChangeProducts).Methods(POST)
+	managersSubroter.HandleFunc("/products/{id}", s.handleManagerRemoveProductByID).Methods(DELETE)
+	managersSubroter.HandleFunc("/customer", s.handleManagerGetCustomers).Methods(GET)
 	managersSubroter.HandleFunc("/customer", s.handleManagerChangeCustomer).Methods(POST)
 	managersSubroter.HandleFunc("/customer/{id]", s.handleManagerRemoveCustomerByID).Methods(DELETE)
 }
 
-func MAuthentication(ctx context.Context, writer http.ResponseWriter){
-	id, err := middleware.Authentication(ctx)
+func respondJSON(w http.ResponseWriter, iData interface{}) {
+
+	data, err := json.Marshal(iData)
 	if err != nil {
-		errorWriter(writer, http.StatusBadRequest, err)
+		errorWriter(w, http.StatusInternalServerError, err)
 		return
 	}
-	if id == 0 {
-		errorWriter(writer, http.StatusForbidden, err)
-		return
+
+	w.Header().Set("Content-Type", "application/json")
+	_, err = w.Write(data)
+	if err != nil {
+		log.Print(err)
 	}
 }
-
 func errorWriter(writer http.ResponseWriter, statusError int, err error) {
 	log.Print(err)
 	http.Error(writer, http.StatusText(statusError), statusError)
