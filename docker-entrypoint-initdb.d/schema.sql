@@ -1,69 +1,68 @@
-CREATE TABLE customers
+create table if not exists customers
 (
-    id       BIGSERIAL PRIMARY KEY,
-    name     TEXT      NOT NULL,
-    phone    TEXT      NOT NULL UNIQUE,
-    password TEXT      NOT NULL,
-    active   BOOLEAN   NOT NULL DEFAULT TRUE,
-    created  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    id bigserial primary key,
+    name	text not null,
+    phone 	text 	not null unique,
+    password text 	not null,
+    active 	boolean not null default true,
+    created timestamp not null default current_timestamp
 );
 
-CREATE TABLE managers
+create table if not exists managers
 (
-    id         BIGSERIAL PRIMARY KEY,
-    name       TEXT      NOT NULL,
-    phone      TEXT      NOT NULL UNIQUE,
-    password   TEXT      NOT NULL,
-    salary     INTEGER   NOT NULL check ( managers.salary > 0 ),
-    plan       INTEGER   NOT NULL DEFAULT 0 CHECK ( managers.salary > 0 ),
-    boss_id    BIGINT REFERENCES managers,
-    department TEXT,
-    roles      TEXT[]    NOT NULL DEFAULT '{}',
-    active     BOOLEAN   NOT NULL DEFAULT TRUE,
-    created    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    id bigserial primary key,
+    name	text not null,
+    salary integer not null default 0,
+    plan    integer not null default 0,
+    boss_id bigint references managers,
+    departament text,
+    phone 	text 	not null unique,
+    password text ,
+    is_admin boolean not null default true,
+    active 	boolean not null default true,
+    created timestamp not null default current_timestamp
 );
 
-CREATE TABLE products
+create table if not exists customers_tokens
 (
-    id      BIGSERIAL PRIMARY KEY,
-    name    TEXT      NOT NULL,
-    price   INTEGER   NOT NULL CHECK ( products.price > 0 ),
-    qty     INTEGER   NOT NULL DEFAULT 0 CHECK ( products.qty >= 0 ),
-    active  BOOLEAN   NOT NULL DEFAULT TRUE,
-    created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    token text not null unique,
+    customer_id bigint not null references customers,
+    expire  timestamp not null default current_timestamp + interval '1 hour',
+    created timestamp not null default current_timestamp
 );
 
-CREATE TABLE customers_tokens
+create table if not exists managers_tokens
 (
-    token       TEXT      NOT NULL UNIQUE,
-    customer_id BIGINT    NOT NULL REFERENCES customers,
-    expire      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP + INTERVAL '1 hour',
-    created     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    token text not null unique,
+    manager_id bigint not null references managers,
+    expire  timestamp not null default current_timestamp + interval '1 hour',
+    created timestamp not null default current_timestamp
 );
 
-CREATE TABLE managers_tokens
+create table if not exists products
 (
-    token      TEXT      NOT NULL UNIQUE,
-    manager_id BIGINT    NOT NULL REFERENCES managers,
-    expire     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP + INTERVAL '1 hour',
-    created    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    id      bigserial primary key,
+    name    text not null,
+    price   integer not null check(price >0),
+    qty     integer not null default 0 check(qty >=0),
+    active 	boolean not null default true,
+    created timestamp not null default current_timestamp
 );
 
-CREATE TABLE sales
+create table if not exists sales
 (
-    id          BIGSERIAL PRIMARY KEY,
-    manager_id  BIGINT    NOT NULL REFERENCES managers,
-    customer_id BIGINT REFERENCES customers,
-    created     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    id          bigserial primary key,
+    manager_id  bigint not null references managers,
+    customer_id bigint not null,
+    created     timestamp not null default current_timestamp
 );
 
-CREATE TABLE sale_positions
+create table if not exists sales_positions
 (
-    id         BIGSERIAL PRIMARY KEY,
-    sale_id    BIGINT    NOT NULL REFERENCES sales,
-    product_id BIGINT    NOT NULL REFERENCES products,
-    name       TEXT      NOT NULL,
-    price      INTEGER   NOT NULL CHECK ( sale_positions.price > 0 ),
-    qty        INTEGER   NOT NULL DEFAULT 0 CHECK ( sale_positions.qty >= 0 ),
-    created    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    id          bigserial primary key,
+    product_id  bigint not null references products,
+    sale_id  bigint not null references sales,
+    price integer not null check(price >= 0),
+    qty     integer not null default 0 check(qty >=0),
+    created     timestamp not null default current_timestamp
 );

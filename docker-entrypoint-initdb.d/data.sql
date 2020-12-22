@@ -1,2 +1,2 @@
-INSERT INTO managers(name, phone, password, roles, salary)
-VALUES ('Vasya', '+992000000001', '$2a$10$OaUtjCNv2DT5x/dXcV.P3eYkIPIRtBr/v8Nluwifz6brSkfyXOh6m', '{ADMIN}', 1);
+insert into managers (name, phone, password, is_admin)
+values ('vasya', '+992000000001', '$2a$10$OaUtjCNv2DT5x/dXcV.P3eYkIPIRtBr/v8Nluwifz6brSkfyXOh6m', true);
