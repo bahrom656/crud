@@ -3,16 +3,23 @@ package middleware
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 )
 
-var ErrNoAuthentication = errors.New("no authentication")
+const (
+	MANAGER = "MANAGER"
+	ADMIN   = "ADMIN"
+)
+
+var ErrNoAuthentication = errors.New("No authentication")
 
 var authenticationContextKey = &contextKey{"authentication context"}
 
 type contextKey struct {
 	name string
 }
+type HasAnyRoleFunc func(ctx context.Context, roles ...string) bool
 
 func (c *contextKey) String() string {
 	return c.name
@@ -26,7 +33,10 @@ func Authenticate(idFunc IDFunc) func(http.Handler) http.Handler {
 			token := request.Header.Get("Authorization")
 
 			id, err := idFunc(request.Context(), token)
-			if err == nil {
+			if err != nil {
+				log.Print(err, "Authhhththth")
+				http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
 			}
 
 			ctx := context.WithValue(request.Context(), authenticationContextKey, id)
