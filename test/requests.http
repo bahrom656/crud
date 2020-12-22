@@ -1,0 +1,8 @@
+POST http://localhost:9999/api/customers/token
+Content-Type: application/json
+
+{
+   "name": "Vasya",
+  "phone": "+992000000021",
+  "password": "secret"
+}
